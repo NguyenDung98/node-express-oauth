@@ -55,49 +55,46 @@ Your code here
 */
 app.get("/authorize", (req, res) => {
 	const clientId = req.query.client_id;
-	const scopes = req.query.scopes.split(" ");
+	const scopeStr = req.query.scope
+	const scopes = scopeStr ? scopeStr.split(" ") : null; 
 
 	if (!clients.hasOwnProperty(clientId)) {
-		res.status(401);
-		return;
+		return res.status(401).end();
 	}
 
-	if (!containsAll(clients[clientId], scopes)) {
-		res.status(401);
-		return;
+	if (!containsAll(clients[clientId].scopes, scopes)) {
+		return res.status(401).end();
 	}
 
 	// Store the request
 	const requestId = randomString();
-	requests[requestId] = req;
+	requests[requestId] = req.query;
 
 	// Render login page
-	res.render("login", {
-		client: clients[clientId],
-		scopes,
-		requestId
-	});
-	
-	res.end();
+	res
+		.status(200)
+		.render("login", {
+			client: clients[clientId],
+			scope: scopeStr,
+			requestId,
+		})
 })
 
 app.post("/approve", (req, res) => {
 	const {
 		userName,
 		password,
-		requestID: requestId
+		requestId
 	} = req.body;
 
 	// Checking credentials
 	if (!(users.hasOwnProperty(userName) && users[userName] === password)) {
-		res.status(401);
-		return;
+		return res.status(401).end();
 	}
 
 	// Checking request existence
 	if (!requests.hasOwnProperty(requestId)) {
-		res.status(401);
-		return;
+		return res.status(401).end();
 	}
 	
 	// Save request object
@@ -115,31 +112,30 @@ app.post("/approve", (req, res) => {
 	params.set("code", randomCode);
 	params.set("state", clientRequest.state);
 
-	res.redirect(`${clientRequest.redirect_uri}?${params.toString()}`);
+	res
+		.status(200)
+		.redirect(`${clientRequest.redirect_uri}?${params.toString()}`)
 });
 
 app.post("/token", (req, res) => {
 	const authorization = req.headers.authorization;
 
 	if (!authorization) {
-		res.status(401);
-		return;
+		return res.status(401).end();
 	};
 
 	const {clientId, clientSecret} = decodeAuthCredentials(authorization);
 
 	// Check client credentials
-	if (!(clients.hasOwnProperty(clientId) && clients[clientId] === clientSecret)) {
-		res.status(401);
-		return;
+	if (!(clients.hasOwnProperty(clientId) && clients[clientId].clientSecret === clientSecret)) {
+		return res.status(401).end();
 	};
 
 	// Check authorization code
 	const authCode = req.body.code;
 
 	if (!authorizationCodes.hasOwnProperty(authCode)) {
-		res.status(401);
-		return;
+		return res.status(401).end();
 	}
 
 	const authObject = authorizationCodes[authCode];
@@ -148,11 +144,11 @@ app.post("/token", (req, res) => {
 
 	// Issue access token
 	const userName = authObject.userName;
-	const scopes = authObject.clientReq.scopes;
+	const scope = authObject.clientReq.scope;
 
 	const token = jwt.sign({
 		userName,
-		scopes
+		scope
 	}, fs.readFileSync("./assets/private_key.pem", "utf8"), {
 		algorithm: "RS256"
 	});
